@@ -1,7 +1,7 @@
 import os
 import asyncio
 import aiohttp
-import feedparser
+import json
 from datetime import datetime
 from telegram import Bot
 from telegram.constants import ParseMode
@@ -18,9 +18,8 @@ logger = logging.getLogger(__name__)
 
 # ================ ИСТОЧНИКИ НОВОСТЕЙ ================
 NEWS_SOURCES = {
-    'CoinDesk': 'https://www.coindesk.com/arc/outboundfeeds/rss/',
-    'CoinTelegraph': 'https://cointelegraph.com/rss',
-    'Decrypt': 'https://decrypt.co/feed',
+    'CryptoPanic': 'https://cryptopanic.com/api/v1/posts/?auth_token=demo&public=true',
+    'CoinGecko': 'https://api.coingecko.com/api/v3/news'
 }
 
 # Хранилище обработанных новостей
@@ -70,19 +69,18 @@ MARVEL_STYLE_TEMPLATES = {
 
 def generate_news_hash(news_item):
     """Генерируем уникальный хеш для новости"""
-    content = f"{news_item['title']}_{news_item['link']}"
+    content = f"{news_item['title']}_{news_item.get('url', '')}"
     return hashlib.md5(content.encode()).hexdigest()
 
 def analyze_sentiment(title, summary):
     """Анализируем тональность новости"""
-    positive_words = ['рост', 'вырос', 'успех', 'прорыв', 'инновация', 'партнерство', 'одобрение', 'запуск']
-    negative_words = ['падение', 'упал', 'сбой', 'запрет', 'регуляция', 'суд', 'хакеры', 'мошенничество']
+    positive_words = ['рост', 'вырос', 'успех', 'прорыв', 'инновация', 'партнерство', 'одобрение', 'запуск', 'интеграция', 'рост', 'up', 'success', 'breakthrough']
+    negative_words = ['падение', 'упал', 'сбой', 'запрет', 'регуляция', 'суд', 'хакеры', 'мошенничество', 'обвал', 'down', 'hack', 'scam', 'ban']
     
-    title_lower = title.lower()
-    summary_lower = summary.lower()
+    text = f"{title} {summary}".lower()
     
-    positive_score = sum(1 for word in positive_words if word in title_lower or word in summary_lower)
-    negative_score = sum(1 for word in negative_words if word in title_lower or word in summary_lower)
+    positive_score = sum(1 for word in positive_words if word in text)
+    negative_score = sum(1 for word in negative_words if word in text)
     
     if positive_score > negative_score:
         return "🟢 ПОЗИТИВ", "📈 Бычье настроение"
@@ -94,13 +92,13 @@ def analyze_sentiment(title, summary):
 def generate_marvel_analysis(news_item):
     """Генерируем авторский анализ в стиле Marvel Market"""
     title = news_item['title']
-    summary = news_item.get('summary', '')[:200] + '...' if news_item.get('summary') else title
+    summary = news_item.get('summary', title)[:300] + '...'
     source = news_item['source']
     
     sentiment, sentiment_desc = analyze_sentiment(title, summary)
     
     # Определяем тип новости
-    if any(word in title.lower() for word in ['hack', 'attack', 'exploit', 'stolen', 'scam', 'взлом', 'атака']):
+    if any(word in title.lower() for word in ['hack', 'attack', 'exploit', 'stolen', 'scam', 'взлом', 'атака', 'кража']):
         news_type = 'breaking'
     else:
         news_type = 'analysis'
@@ -108,7 +106,7 @@ def generate_marvel_analysis(news_item):
     # Генерируем анализ в зависимости от типа
     if news_type == 'analysis':
         analysis_points = [
-            "Потенциальное влияние на основные активы",
+            "Потенциальное влияние на основные активы BTC/ETH",
             "Реакция рынка в краткосрочной перспективе", 
             "Долгосрочные последствия для индустрии"
         ]
@@ -132,7 +130,7 @@ def generate_marvel_analysis(news_item):
     
     else:  # breaking
         impacts = [
-            "Возможная повышенная волатильность",
+            "Возможная повышенная волатильность на рынке",
             "Реакция регуляторов на инцидент",
             "Влияние на доверие инвесторов"
         ]
@@ -149,37 +147,76 @@ def generate_marvel_analysis(news_item):
             time=datetime.now().strftime('%d.%m.%Y %H:%M')
         )
 
-async def fetch_news_from_source(source_name, rss_url):
-    """Получаем новости из RSS источника"""
+async def fetch_cryptopanic_news():
+    """Получаем новости с CryptoPanic API"""
     try:
-        logger.info(f"📡 Получаем новости из {source_name}...")
-        feed = feedparser.parse(rss_url)
+        logger.info("📡 Получаем новости с CryptoPanic...")
+        url = NEWS_SOURCES['CryptoPanic']
         
-        news_items = []
-        for entry in feed.entries[:3]:
-            news_item = {
-                'title': entry.title,
-                'link': entry.link,
-                'source': source_name,
-                'summary': entry.get('summary', ''),
-                'published': entry.get('published', ''),
-                'hash': generate_news_hash({'title': entry.title, 'link': entry.link})
-            }
-            news_items.append(news_item)
-        
-        logger.info(f"✅ Получено {len(news_items)} новостей из {source_name}")
-        return news_items
-        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    news_items = []
+                    
+                    for item in data.get('results', [])[:5]:  # Берем 5 последних новостей
+                        news_item = {
+                            'title': item.get('title', ''),
+                            'summary': item.get('title', ''),
+                            'url': item.get('url', ''),
+                            'source': 'CryptoPanic',
+                            'hash': generate_news_hash({'title': item.get('title', ''), 'url': item.get('url', '')})
+                        }
+                        news_items.append(news_item)
+                    
+                    logger.info(f"✅ Получено {len(news_items)} новостей с CryptoPanic")
+                    return news_items
+                else:
+                    logger.error(f"❌ Ошибка CryptoPanic API: {response.status}")
+                    return []
+                    
     except Exception as e:
-        logger.error(f"❌ Ошибка при получении новостей из {source_name}: {e}")
+        logger.error(f"❌ Ошибка при получении новостей с CryptoPanic: {e}")
+        return []
+
+async def fetch_coingecko_news():
+    """Получаем новости с CoinGecko API"""
+    try:
+        logger.info("📡 Получаем новости с CoinGecko...")
+        url = NEWS_SOURCES['CoinGecko']
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    news_items = []
+                    
+                    for item in data.get('news', [])[:5]:  # Берем 5 последних новостей
+                        news_item = {
+                            'title': item.get('title', ''),
+                            'summary': item.get('description', item.get('title', '')),
+                            'url': item.get('url', ''),
+                            'source': 'CoinGecko',
+                            'hash': generate_news_hash({'title': item.get('title', ''), 'url': item.get('url', '')})
+                        }
+                        news_items.append(news_item)
+                    
+                    logger.info(f"✅ Получено {len(news_items)} новостей с CoinGecko")
+                    return news_items
+                else:
+                    logger.error(f"❌ Ошибка CoinGecko API: {response.status}")
+                    return []
+                    
+    except Exception as e:
+        logger.error(f"❌ Ошибка при получении новостей с CoinGecko: {e}")
         return []
 
 async def get_all_news():
     """Получаем новости со всех источников"""
-    tasks = []
-    for source_name, rss_url in NEWS_SOURCES.items():
-        task = fetch_news_from_source(source_name, rss_url)
-        tasks.append(task)
+    tasks = [
+        fetch_cryptopanic_news(),
+        fetch_coingecko_news()
+    ]
     
     all_news = await asyncio.gather(*tasks)
     
