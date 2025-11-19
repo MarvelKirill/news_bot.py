@@ -25,153 +25,160 @@ NEWS_SOURCES = [
         'name': 'CryptoCompare',
         'url': 'https://min-api.cryptocompare.com/data/v2/news/?lang=EN',
         'type': 'cryptocompare'
-    },
-    {
-        'name': 'BlockchainNews', 
-        'url': 'https://newsapi.org/v2/everything?q=blockchain&apiKey=demo&pageSize=5',
-        'type': 'newsapi'
     }
 ]
 
 # Хранилище обработанных новостей
 processed_news = set()
 
-# ================ СТИЛЬ MARVEL MARKET ================
-MARVEL_STYLE_TEMPLATES = {
-    'analysis': """
-🔥 <b>{title}</b>
-
-📌 <b>О ЧЕМ РЕЧЬ:</b>
-{summary}
-
-💡 <b>MARVEL АНАЛИЗ:</b>
-• {analysis_point1}
-• {analysis_point2} 
-• {analysis_point3}
-
-⚡ <b>ВЫВОДЫ:</b>
-{conclusion}
-
-🎯 <b>НАША ПОЗИЦИЯ:</b>
-{position}
-
-🔗 <b>Источник:</b> {source}
-⏰ <b>Время:</b> {time}
-    """,
+# ================ ПЕРЕВОД И АНАЛИЗ ================
+CRYPTO_TERMS = {
+    # Основные термины
+    'bitcoin': 'Биткоин', 'btc': 'BTC', 'ethereum': 'Ethereum', 'eth': 'ETH',
+    'crypto': 'криптовалюта', 'cryptocurrency': 'криптовалюта', 'blockchain': 'блокчейн',
+    'defi': 'DeFi', 'nft': 'NFT', 'exchange': 'биржа', 'wallet': 'кошелек',
     
-    'breaking': """
-🚨 <b>ЭКСТРЕННО: {title}</b>
-
-📢 <b>СУТЬ СОБЫТИЯ:</b>
-{event_details}
-
-💥 <b>ПОСЛЕДСТВИЯ:</b>
-• {impact1}
-• {impact2}
-• {impact3}
-
-🎯 <b>ЧТО ДЕЛАТЬ:</b>
-{action_advice}
-
-🔗 <b>Источник:</b> {source}  
-⏰ <b>Время:</b> {time}
-    """
+    # Действия
+    'rise': 'рост', 'grow': 'рост', 'increase': 'увеличение', 'up': 'вверх',
+    'fall': 'падение', 'drop': 'снижение', 'decrease': 'снижение', 'down': 'вниз',
+    'surge': 'резкий рост', 'plunge': 'обвал', 'crash': 'крах', 'rally': 'ралли',
+    
+    # Компании и проекты
+    'binance': 'Binance', 'coinbase': 'Coinbase', 'kraken': 'Kraken',
+    'solana': 'Solana', 'cardano': 'Cardano', 'polkadot': 'Polkadot',
+    'uniswap': 'Uniswap', 'chainlink': 'Chainlink', 'litecoin': 'Litecoin',
+    
+    # Технические термины
+    'mining': 'майнинг', 'staking': 'стейкинг', 'yield': 'доходность',
+    'liquidity': 'ликвидность', 'volatility': 'волатильность',
+    'market cap': 'капитализация', 'trading volume': 'объем торгов',
+    
+    # Регуляция
+    'regulation': 'регулирование', 'sec': 'SEC', 'securities': 'ценные бумаги',
+    'lawsuit': 'иск', 'legal': 'юридический', 'government': 'правительство',
+    
+    # Безопасность
+    'hack': 'взлом', 'security': 'безопасность', 'vulnerability': 'уязвимость',
+    'attack': 'атака', 'exploit': 'эксплойт', 'scam': 'мошенничество'
 }
 
-# Заголовки для обхода ограничений
-USER_AGENTS = [
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'
-]
-
-def generate_news_hash(news_item):
-    """Генерируем уникальный хеш для новости"""
-    content = f"{news_item['title']}_{news_item.get('url', '')}"
-    return hashlib.md5(content.encode()).hexdigest()
-
-def analyze_sentiment(title, summary):
-    """Анализируем тональность новости"""
-    positive_words = ['рост', 'вырос', 'успех', 'прорыв', 'инновация', 'партнерство', 'одобрение', 'запуск', 'bullish', 'up', 'success', 'breakthrough', 'approval']
-    negative_words = ['падение', 'упал', 'сбой', 'запрет', 'регуляция', 'суд', 'хакеры', 'мошенничество', 'обвал', 'bearish', 'down', 'hack', 'scam', 'ban', 'crash']
+def translate_to_russian(text):
+    """Переводим ключевые термины на русский"""
+    if not text:
+        return ""
     
-    text = f"{title} {summary}".lower()
+    text_lower = text.lower()
+    translated = text
     
-    positive_score = sum(1 for word in positive_words if word in text)
-    negative_score = sum(1 for word in negative_words if word in text)
+    # Заменяем термины сохраняя регистр
+    for eng, rus in CRYPTO_TERMS.items():
+        if eng in text_lower:
+            # Сохраняем регистр первого символа
+            if text_lower[text_lower.index(eng)].isupper():
+                rus = rus.capitalize()
+            translated = translated.replace(eng, rus).replace(eng.capitalize(), rus)
     
-    if positive_score > negative_score:
-        return "🟢 ПОЗИТИВ", "📈 Бычье настроение"
-    elif negative_score > positive_score:
-        return "🔴 НЕГАТИВ", "📉 Медвежье давление"
-    else:
-        return "🟡 НЕЙТРАЛ", "⚖️ Баланс сил"
+    return translated
 
-def generate_marvel_analysis(news_item):
-    """Генерируем авторский анализ в стиле Marvel Market"""
-    title = news_item['title']
-    summary = news_item.get('summary', title)[:300] + '...'
+def generate_russian_analysis(news_item):
+    """Генерируем анализ на русском с полезной информацией"""
+    title = translate_to_russian(news_item['title'])
+    summary = translate_to_russian(news_item.get('summary', title))[:250] + '...'
     source = news_item['source']
     
-    sentiment, sentiment_desc = analyze_sentiment(title, summary)
+    # Анализируем тональность
+    text_for_analysis = f"{title} {summary}".lower()
     
-    # Определяем тип новости
-    title_lower = title.lower()
-    if any(word in title_lower for word in ['hack', 'attack', 'exploit', 'stolen', 'scam', 'взлом', 'атака', 'кража', 'fraud']):
-        news_type = 'breaking'
-    elif any(word in title_lower for word in ['bitcoin', 'ethereum', 'btc', 'eth', 'crypto', 'regulation']):
-        news_type = 'analysis'
+    # Определяем категорию новости
+    if any(word in text_for_analysis for word in ['взлом', 'атака', 'мошенничество', 'кража', 'хакер']):
+        category = "БЕЗОПАСНОСТЬ"
+        emoji = "🛡️"
+    elif any(word in text_for_analysis for word in ['регулирование', 'правительство', 'закон', 'sec', 'иск']):
+        category = "РЕГУЛЯЦИЯ"
+        emoji = "⚖️"
+    elif any(word in text_for_analysis for word in ['обновление', 'технология', 'протокол', 'сеть', 'масштабируемость']):
+        category = "ТЕХНОЛОГИИ"
+        emoji = "🔧"
+    elif any(word in text_for_analysis for word in ['партнерство', 'интеграция', 'сотрудничество', 'запуск']):
+        category = "ПАРТНЕРСТВА"
+        emoji = "🤝"
     else:
-        news_type = 'analysis'
+        category = "РЫНОК"
+        emoji = "📊"
     
-    # Генерируем анализ в зависимости от типа
-    if news_type == 'analysis':
-        analysis_points = [
-            "Потенциальное влияние на основные активы BTC/ETH",
-            "Реакция рынка в краткосрочной перспективе", 
-            "Долгосрочные последствия для индустрии"
-        ]
-        conclusions = [
-            "Рынок может отреагировать в течение торговой сессии",
-            "Рекомендуем следить за ценовой динамикой"
-        ]
-        position = f"{sentiment_desc} - {sentiment}"
-        
-        return MARVEL_STYLE_TEMPLATES['analysis'].format(
-            title=title.upper(),
-            summary=summary,
-            analysis_point1=analysis_points[0],
-            analysis_point2=analysis_points[1],
-            analysis_point3=analysis_points[2],
-            conclusion="\n".join([f"• {c}" for c in conclusions]),
-            position=position,
-            source=source,
-            time=datetime.now().strftime('%d.%m.%Y %H:%M')
-        )
+    # Генерируем полезные инсайты
+    insights = [
+        "📈 <b>Влияние на BTC/ETH:</b> " + get_btc_eth_impact(text_for_analysis),
+        "💰 <b>Торговая идея:</b> " + get_trading_idea(text_for_analysis),
+        "⏰ <b>Временной горизонт:</b> " + get_time_horizon(text_for_analysis)
+    ]
     
-    else:  # breaking
-        impacts = [
-            "Возможная повышенная волатильность на рынке",
-            "Реакция регуляторов на инцидент",
-            "Влияние на доверие инвесторов"
-        ]
-        actions = "Рекомендуем дождаться прояснения ситуации перед крупными сделками"
-        
-        return MARVEL_STYLE_TEMPLATES['breaking'].format(
-            title=title.upper(),
-            event_details=summary,
-            impact1=impacts[0],
-            impact2=impacts[1],
-            impact3=impacts[2],
-            action_advice=actions,
-            source=source,
-            time=datetime.now().strftime('%d.%m.%Y %H:%M')
-        )
+    # Формируем сообщение
+    message = f"{emoji} <b>НОВОСТЬ {category}</b> {emoji}\n\n"
+    message += f"🔥 <b>{title.upper()}</b>\n\n"
+    message += f"📌 <b>СУТЬ СОБЫТИЯ:</b>\n{summary}\n\n"
+    message += "💡 <b>ПОЛЕЗНЫЕ ИНСАЙТЫ:</b>\n"
+    for insight in insights:
+        message += f"• {insight}\n"
+    message += f"\n🎯 <b>РЕКОМЕНДАЦИЯ:</b> {get_recommendation(text_for_analysis)}\n"
+    message += f"\n🔗 <b>Источник:</b> {source}\n"
+    message += f"⏰ <b>Время анализа:</b> {datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
+    message += "\n💎 <b>MarvelMarket</b> - умные инсайты для твоих инвестиций!"
+    
+    return message
 
+def get_btc_eth_impact(text):
+    """Определяем влияние на основные активы"""
+    if any(word in text for word in ['биткоин', 'btc', 'майнинг']):
+        return "Прямое влияние на BTC - следим за ценовой реакцией"
+    elif any(word in text for word in ['ethereum', 'eth', 'смарт-контракт']):
+        return "Влияние на ETH и экосистему DeFi"
+    elif any(word in text for word in ['регулирование', 'правительство']):
+        return "Возможна волатильность на всем рынке"
+    else:
+        return "Локальное влияние - следим за связанными активами"
+
+def get_trading_idea(text):
+    """Генерируем торговую идею"""
+    if any(word in text for word in ['рост', 'увеличение', 'ралли']):
+        return "Рассмотреть покупки на коррекциях"
+    elif any(word in text for word in ['падение', 'снижение', 'обвал']):
+        return "Осторожность с покупками, возможны тейк-профиты"
+    elif any(word in text for word in ['взлом', 'мошенничество']):
+        return "Временное снижение - возможность для накопления"
+    else:
+        return "Следить за развитием ситуации перед сделками"
+
+def get_time_horizon(text):
+    """Определяем временной горизонт"""
+    if any(word in text for word in ['взлом', 'атака', 'суд']):
+        return "Краткосрочный (1-3 дня)"
+    elif any(word in text for word in ['регулирование', 'закон']):
+        return "Среднесрочный (1-4 недели)"
+    elif any(word in text for word in ['технология', 'обновление']):
+        return "Долгосрочный (1-6 месяцев)"
+    else:
+        return "Кратко-среднесрочный (1-2 недели)"
+
+def get_recommendation(text):
+    """Даем рекомендацию"""
+    if any(word in text for word in ['рост', 'партнерство', 'запуск']):
+        return "Позитивный сценарий - искать точки входа"
+    elif any(word in text for word in ['падение', 'взлом', 'мошенничество']):
+        return "Осторожность - дождаться прояснения"
+    elif any(word in text for word in ['регулирование', 'суд']):
+        return "Нейтрально - следить за развитием событий"
+    else:
+        return "Внимательное наблюдение - готовность к действию"
+
+# Остальной код без изменений...
 async def fetch_news_with_retry(source):
     """Получаем новости с повторами при ошибках"""
     headers = {
-        'User-Agent': random.choice(USER_AGENTS),
+        'User-Agent': random.choice([
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+        ]),
         'Accept': 'application/json'
     }
     
@@ -185,21 +192,10 @@ async def fetch_news_with_retry(source):
                     news_items = []
                     
                     if source['type'] == 'cryptocompare':
-                        for item in data.get('Data', [])[:5]:
+                        for item in data.get('Data', [])[:3]:  # Только 3 новости
                             news_item = {
                                 'title': item.get('title', ''),
                                 'summary': item.get('body', item.get('title', ''))[:300],
-                                'url': item.get('url', ''),
-                                'source': source['name'],
-                                'hash': generate_news_hash({'title': item.get('title', ''), 'url': item.get('url', '')})
-                            }
-                            news_items.append(news_item)
-                    
-                    elif source['type'] == 'newsapi':
-                        for item in data.get('articles', [])[:5]:
-                            news_item = {
-                                'title': item.get('title', ''),
-                                'summary': item.get('description', item.get('title', ''))[:300],
                                 'url': item.get('url', ''),
                                 'source': source['name'],
                                 'hash': generate_news_hash({'title': item.get('title', ''), 'url': item.get('url', '')})
@@ -221,18 +217,11 @@ async def get_mock_news():
     """Генерируем тестовые новости когда API недоступны"""
     mock_news = [
         {
-            'title': 'Bitcoin демонстрирует устойчивость выше $40,000',
-            'summary': 'Крупнейшая криптовалюта удерживает ключевой уровень поддержки, пока инвесторы оценивают макроэкономические данные.',
+            'title': 'Bitcoin Shows Strength Above $40,000 Level',
+            'summary': 'Major cryptocurrency holds key support level as investors assess macroeconomic data and institutional interest continues to grow.',
             'url': 'https://example.com/btc-news',
             'source': 'MarvelMarket Analytics',
-            'hash': generate_news_hash({'title': 'Bitcoin демонстрирует устойчивость выше $40,000', 'url': 'https://example.com/btc-news'})
-        },
-        {
-            'title': 'Ethereum готовится к следующему обновлению сети',
-            'summary': 'Разработчики анонсировали важное обновление, которое улучшит масштабируемость блокчейна Ethereum.',
-            'url': 'https://example.com/eth-news', 
-            'source': 'MarvelMarket Analytics',
-            'hash': generate_news_hash({'title': 'Ethereum готовится к следующему обновлению сети', 'url': 'https://example.com/eth-news'})
+            'hash': generate_news_hash({'title': 'Bitcoin Shows Strength Above $40,000 Level', 'url': 'https://example.com/btc-news'})
         }
     ]
     return mock_news
@@ -254,6 +243,11 @@ async def get_all_news():
     
     return combined_news
 
+def generate_news_hash(news_item):
+    """Генерируем уникальный хеш для новости"""
+    content = f"{news_item['title']}_{news_item.get('url', '')}"
+    return hashlib.md5(content.encode()).hexdigest()
+
 def filter_new_news(all_news):
     """Фильтруем только новые новости"""
     new_news = []
@@ -274,17 +268,18 @@ async def send_news_update():
         welcome_msg = """
 🚀 <b>MarvelMarket News Bot АКТИВИРОВАН!</b>
 
-📡 <b>Мониторим:</b>
-• Рыночные новости и аналитика
+📡 <b>Мониторим самые важные новости:</b>
+• Безопасность и взломы
+• Регуляторные изменения  
 • Технические обновления
-• Регуляторные изменения
+• Ключевые партнерства
 
 ⚡ <b>Режим работы:</b>
-• Проверка каждые 30 минут
-• Авторский анализ в стиле MarvelMarket
-• Только самые важные события
+• 1 важная новость каждые 30 минут
+• Авторский анализ на русском
+• Полезные инсайты и рекомендации
 
-💎 <b>MarvelMarket</b> - всегда в курсе крипто-событий!
+💎 <b>MarvelMarket</b> - только самое важное!
         """
         await bot.send_message(
             chat_id=CHANNEL_ID,
@@ -305,11 +300,14 @@ async def send_news_update():
             # Фильтруем только новые
             new_news = filter_new_news(all_news)
             
-            # Отправляем каждую новость
-            for news_item in new_news:
+            # Отправляем только ОДНУ самую важную новость
+            if new_news:
+                # Выбираем самую важную новость (первую в списке)
+                most_important_news = new_news[0]
+                
                 try:
-                    # Генерируем сообщение в стиле Marvel Market
-                    message = generate_marvel_analysis(news_item)
+                    # Генерируем сообщение на русском с анализом
+                    message = generate_russian_analysis(most_important_news)
                     
                     # Отправляем в канал
                     await bot.send_message(
@@ -319,21 +317,16 @@ async def send_news_update():
                         disable_web_page_preview=False
                     )
                     
-                    logger.info(f"✅ Отправлена новость: {news_item['title'][:50]}...")
-                    
-                    # Ждем 45 секунд между отправками
-                    await asyncio.sleep(45)
+                    logger.info(f"✅ Отправлена новость: {most_important_news['title'][:50]}...")
                     
                 except Exception as e:
                     logger.error(f"❌ Ошибка при отправке новости: {e}")
-                    continue
-            
-            if not new_news:
+            else:
                 logger.info("📭 Новых новостей нет")
             
             # Ждем 30 минут до следующей проверки
             logger.info("⏰ Ожидание 30 минут до следующей проверки...")
-            await asyncio.sleep(1800)
+            await asyncio.sleep(1800)  # 30 минут
             
         except Exception as e:
             logger.error(f"❌ КРИТИЧЕСКАЯ Ошибка в send_news_update: {e}")
