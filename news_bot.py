@@ -5,6 +5,7 @@ import json
 from datetime import datetime
 from telegram import Bot
 from telegram.constants import ParseMode
+from aiohttp import web
 import logging
 import hashlib
 import random
@@ -12,6 +13,7 @@ import random
 # ================ НАСТРОЙКИ ================
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_NEWS_BOT_TOKEN')
 CHANNEL_ID = os.environ.get('CHANNEL_ID')
+PORT = int(os.environ.get('PORT', 10002))
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -329,14 +331,32 @@ async def send_news_update():
             if not new_news:
                 logger.info("📭 Новых новостей нет")
             
-            # Ждем 30 минут до следующей проверки (увеличили интервал)
+            # Ждем 30 минут до следующей проверки
             logger.info("⏰ Ожидание 30 минут до следующей проверки...")
-            await asyncio.sleep(1800)  # 30 минут
+            await asyncio.sleep(1800)
             
         except Exception as e:
             logger.error(f"❌ КРИТИЧЕСКАЯ Ошибка в send_news_update: {e}")
             logger.info("🔄 Перезапуск через 120 секунд...")
             await asyncio.sleep(120)
+
+async def health_check(request):
+    """Простой HTTP endpoint для проверки порта"""
+    return web.Response(text="🚀 MarvelMarket News Bot is running!")
+
+async def start_http_server():
+    """Запускаем минимальный HTTP сервер только для проверки порта"""
+    app = web.Application()
+    app.router.add_get('/', health_check)
+    app.router.add_get('/health', health_check)
+    
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', PORT)
+    await site.start()
+    
+    logger.info(f"🌐 HTTP сервер запущен на порту {PORT} (только для проверки Render)")
+    return runner
 
 async def main():
     # ПРОВЕРЯЕМ ПЕРЕМЕННЫЕ ПРИ СТАРТЕ
@@ -349,9 +369,21 @@ async def main():
         exit(1)
     
     logger.info("✅ Все переменные окружения установлены")
-    logger.info("🚀 MarvelMarket News Bot запущен!")
     
-    # Запускаем мониторинг новостей
+    # Запускаем HTTP сервер на 30 секунд чтобы Render увидел порт
+    logger.info("🔄 Запускаем HTTP сервер для проверки порта...")
+    runner = await start_http_server()
+    
+    # Ждем 30 секунд чтобы Render успел проверить порт
+    logger.info("⏳ Ожидаем 30 секунд для проверки порта Render...")
+    await asyncio.sleep(30)
+    
+    # Останавливаем HTTP сервер - он больше не нужен
+    logger.info("🛑 Останавливаем HTTP сервер...")
+    await runner.cleanup()
+    
+    # Запускаем основную задачу
+    logger.info("🚀 Запуск основной задачи мониторинга новостей...")
     await send_news_update()
 
 if __name__ == "__main__":
