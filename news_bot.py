@@ -1,9 +1,17 @@
 import asyncio
-import schedule
 import time
 from datetime import datetime, timedelta
 import hashlib
 import logging
+import aiohttp
+import os
+
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 class NewsManager:
     def __init__(self):
@@ -11,6 +19,8 @@ class NewsManager:
         self.is_processing = False
         self.last_news_time = None
         self.news_cooldown = timedelta(minutes=25)  # Защита от дублирования
+        self.bot_token = os.getenv('BOT_TOKEN')
+        self.channel_id = os.getenv('CHANNEL_ID')
         
     def get_news_hash(self, news_data):
         """Создает хеш новости для проверки дублирования"""
@@ -19,12 +29,55 @@ class NewsManager:
     
     async def fetch_news_data(self):
         """Получение данных новостей - замените на ваш реальный метод"""
-        # Ваш код для получения новостей
-        # Возвращает словарь с русским и английским текстом
-        return {
-            'russian': 'Текст новости на русском',
-            'english': 'News text in English'
+        try:
+            # ВРЕМЕННЫЕ ДАННЫЕ ДЛЯ ТЕСТА - замените на ваш API
+            return {
+                'russian': 'Это тестовая новость на русском языке. Бот был исправлен для предотвращения дублирования сообщений.',
+                'english': 'This is a test news in English. The bot has been fixed to prevent message duplication.'
+            }
+        except Exception as e:
+            logging.error(f"Ошибка получения новостей: {e}")
+            return None
+    
+    def format_news_message(self, news_data):
+        """Форматирует одно сообщение с новостью"""
+        return f"""📰 **Актуальная новость**
+
+🇷🇺 **На русском:**
+{news_data['russian']}
+
+🇬🇧 **In English:**
+{news_data['english']}
+
+⏰ _Следующее обновление через 30 минут_"""
+    
+    async def send_telegram_message(self, message):
+        """Отправка сообщения в Telegram"""
+        if not self.bot_token or not self.channel_id:
+            logging.error("Не настроен BOT_TOKEN или CHANNEL_ID")
+            return False
+            
+        url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+        
+        payload = {
+            'chat_id': self.channel_id,
+            'text': message,
+            'parse_mode': 'Markdown'
         }
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload) as response:
+                    if response.status == 200:
+                        logging.info("Сообщение отправлено в Telegram")
+                        return True
+                    else:
+                        error_text = await response.text()
+                        logging.error(f"Ошибка Telegram API: {response.status} - {error_text}")
+                        return False
+        except Exception as e:
+            logging.error(f"Ошибка отправки в Telegram: {e}")
+            return False
     
     async def send_news_update(self):
         """Основная функция отправки новостей с защитой от дублирования"""
@@ -35,13 +88,15 @@ class NewsManager:
             return
             
         # Проверка временного интервала
-        if self.last_news_time and datetime.now() - self.last_news_time < self.news_cooldown:
-            logging.info("Слишком рано для следующей новости, пропускаем")
+        current_time = datetime.now()
+        if self.last_news_time and current_time - self.last_news_time < self.news_cooldown:
+            time_left = self.news_cooldown - (current_time - self.last_news_time)
+            logging.info(f"Слишком рано для следующей новости. Ждем еще: {time_left}")
             return
         
         self.is_processing = True
         try:
-            logging.info("Начало обработки новости...")
+            logging.info("=== Начало обработки новости ===")
             
             # Получаем данные
             news_data = await self.fetch_news_data()
@@ -59,59 +114,47 @@ class NewsManager:
             message = self.format_news_message(news_data)
             
             # Отправляем сообщение
-            await self.send_telegram_message(message)
+            success = await self.send_telegram_message(message)
             
-            # Обновляем состояние
-            self.last_news_hash = current_hash
-            self.last_news_time = datetime.now()
-            
-            logging.info(f"Новость отправлена: {self.last_news_time}")
+            if success:
+                # Обновляем состояние только при успешной отправке
+                self.last_news_hash = current_hash
+                self.last_news_time = datetime.now()
+                logging.info(f"✅ Новость успешно отправлена: {self.last_news_time}")
+            else:
+                logging.error("❌ Не удалось отправить новость")
             
         except Exception as e:
-            logging.error(f"Ошибка отправки новости: {e}")
+            logging.error(f"❌ Ошибка отправки новости: {e}")
         finally:
             self.is_processing = False
+            logging.info("=== Завершение обработки новости ===")
+
+async def main():
+    """Основная функция бота"""
+    news_manager = NewsManager()
     
-    def format_news_message(self, news_data):
-        """Форматирует одно сообщение с новостью"""
-        return f"""📰 **Актуальная новость**
-
-🇷🇺 **На русском:**
-{news_data['russian']}
-
-🇬🇧 **In English:**
-{news_data['english']}
-
-⏰ _Следующее обновление через 30 минут_"""
+    logging.info("🚀 Бот новостей запущен!")
+    logging.info("📰 Режим: новости каждые 30 минут")
+    logging.info("⏰ Первая новость через 1 минуту...")
     
-    async def send_telegram_message(self, message):
-        """Отправка сообщения в Telegram"""
-        # Ваш код отправки через бота
-        # Убедитесь, что вызывается ТОЛЬКО ОДИН РАЗ
-        pass
-
-# Инициализация
-news_manager = NewsManager()
-
-def setup_news_schedule():
-    """Настройка расписания для новостей"""
-    schedule.clear()  # Очищаем ВСЕ предыдущие задания
+    # Ждем немного перед первым запуском
+    await asyncio.sleep(60)
     
-    # ТОЛЬКО ОДИН вызов для новостей
-    schedule.every(30).minutes.do(
-        lambda: asyncio.create_task(news_manager.send_news_update())
-    )
-    
-    logging.info("Расписание новостей установлено: каждые 30 минут")
-
-# Запуск
-setup_news_schedule()
-
-# Основной цикл (упрощенный)
-async def main_loop():
+    # Основной цикл
     while True:
-        schedule.run_pending()
-        await asyncio.sleep(60)  # Проверяем каждую минуту
+        try:
+            # Отправляем новость
+            await news_manager.send_news_update()
+            
+            # Ждем 30 минут до следующей проверки
+            logging.info("⏳ Ожидание 30 минут до следующей новости...")
+            await asyncio.sleep(1800)  # 30 минут = 1800 секунд
+            
+        except Exception as e:
+            logging.error(f"❌ Ошибка в основном цикле: {e}")
+            await asyncio.sleep(60)  # Ждем 1 минуту при ошибке
 
-# Запустить
-# asyncio.run(main_loop())
+if __name__ == "__main__":
+    # Запуск бота
+    asyncio.run(main())
